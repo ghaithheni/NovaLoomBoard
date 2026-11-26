@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkImageFile, imageSize, looksLikePdf, MAX_IMAGE_BYTES, sniffImageMime } from "./assets";
 import { serializeObjects, parseClipboard } from "./clipboard";
-import { exportRegion, pageSvg, parsePageRange, pngScale, sheetFor, sheetViewBox, MAX_PNG_PIXELS, MAX_PNG_SIDE } from "./export";
+import { buildPdfDocument, exportRegion, pageSvg, parsePageRange, pngScale, sheetFor, sheetViewBox, MAX_PNG_PIXELS, MAX_PNG_SIDE } from "./export";
 import { rotateAbout, scaleAbout } from "./matrix";
 import type { ImageObject, TextObject } from "./model";
 import { imageBounds, objectFrame, objectHitsPoint, recolorObject, transformObject } from "./objects";
@@ -185,5 +185,16 @@ describe("export", () => {
     expect(svg).toContain('href="data:image/png;base64,AAAA"');
     expect(svg).toContain('width="297mm"');
     expect(svg).not.toContain("<x>");
+  });
+  it("gives the PDF document the board's name as its title, escaped, and a language", async () => {
+    const pages = [{ objects: [], background: "blank" as const }];
+    const noAssets = async () => null;
+    const { html } = await buildPdfDocument(pages, noAssets, undefined, `Maths <b> & "quotes" 'single'`);
+    expect(html).toContain('<html lang="en">');
+    expect(html).toContain("<title>Maths &lt;b&gt; &amp; &quot;quotes&quot; &#39;single&#39;</title>");
+    expect(html).not.toContain("<b>");
+    for (const empty of [undefined, "", "   "]) {
+      expect((await buildPdfDocument(pages, noAssets, undefined, empty)).html).toContain("<title>Untitled board</title>");
+    }
   });
 });

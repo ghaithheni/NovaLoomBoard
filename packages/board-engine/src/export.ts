@@ -166,7 +166,8 @@ export function sheetViewBox(region: Bounds, sheet: Sheet): { x: number; y: numb
 }
 
 const num = (n: number) => (Math.abs(n) < 1e-9 ? "0" : String(Math.round(n * 1000) / 1000));
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const esc = (s: string) =>
+  s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 const deg = (rad: number) => (rad * 180) / Math.PI;
 
 function backgroundSvg(background: Background, vb: { x: number; y: number; w: number; h: number; mmPerUnit: number }): string {
@@ -350,12 +351,15 @@ function toBase64(bytes: Uint8Array): string {
 /**
  * The printable document for a PDF: one sheet per page, each A4 turned to
  * fit its content. Images are inlined from `readAsset` (original bytes, no
- * re-encoding). `onProgress` reports pages done.
+ * re-encoding). `onProgress` reports pages done. `title` (the board's name)
+ * becomes the document title, which the printer writes into the PDF's
+ * properties and screen readers announce.
  */
 export async function buildPdfDocument(
   pages: readonly ExportPage[],
   readAsset: (id: string) => Promise<AssetData | null>,
   onProgress?: (done: number, total: number) => void,
+  title?: string,
 ): Promise<{ html: string; missingImages: number }> {
   const images = new Map<string, string>();
   let missingImages = 0;
@@ -374,7 +378,8 @@ export async function buildPdfDocument(
     await new Promise((r) => setTimeout(r, 0));
   }
   const html =
-    `<!doctype html><html><head><meta charset="utf-8">` +
+    `<!doctype html><html lang="en"><head><meta charset="utf-8">` +
+    `<title>${esc(title?.trim() || "Untitled board")}</title>` +
     `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'">` +
     `<style>@page landscape{size:297mm 210mm;margin:0}@page portrait{size:210mm 297mm;margin:0}` +
     `html,body{margin:0;padding:0;background:#fff}.sheet{display:block;overflow:hidden;break-after:page}` +

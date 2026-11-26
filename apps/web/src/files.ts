@@ -156,6 +156,7 @@ export async function exportPdf(persistence: Persistence, pageIds: readonly stri
       (n) => {
         if (total > 1) persistence.showStatus({ tone: "progress", text: `Exporting PDF: preparing page ${n} of ${total}…` });
       },
+      title,
     );
     persistence.showStatus({ tone: "progress", text: total > 1 ? `Exporting PDF: writing ${total} pages…` : "Exporting PDF…" });
     await files.exportPdf(path, html);
