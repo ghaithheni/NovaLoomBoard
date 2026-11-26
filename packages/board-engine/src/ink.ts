@@ -55,20 +55,37 @@ export function strokeOutline(
 const avg = (a: number, b: number) => (a + b) / 2;
 const f = (n: number) => (Math.round(n * 100) / 100).toString();
 
-/** Smooth closed SVG path through an outline polygon (quadratic midpoints). */
+/**
+ * Smooth closed SVG path through an outline polygon: a quadratic curve to the
+ * midpoint of each edge, with the vertex as control point. Every control point
+ * is written out: the shorthand "T" reflects the previous one, so rounding
+ * errors would add up along the stroke and make long strokes wobble.
+ */
 export function outlineToSvgPath(outline: readonly number[][]): string {
   const len = outline.length;
   if (len < 4) return "";
-  let a = outline[0]!;
-  let b = outline[1]!;
-  const c = outline[2]!;
-  let d = `M${f(a[0]!)},${f(a[1]!)} Q${f(b[0]!)},${f(b[1]!)} ${f(avg(b[0]!, c[0]!))},${f(avg(b[1]!, c[1]!))} T`;
-  for (let i = 2; i < len - 1; i++) {
-    a = outline[i]!;
-    b = outline[i + 1]!;
-    d += `${f(avg(a[0]!, b[0]!))},${f(avg(a[1]!, b[1]!))} `;
+  const parts = [`M${f(outline[0]![0]!)},${f(outline[0]![1]!)}`];
+  for (let i = 1; i < len - 1; i++) {
+    const a = outline[i]!;
+    const b = outline[i + 1]!;
+    parts.push(`Q${f(a[0]!)},${f(a[1]!)} ${f(avg(a[0]!, b[0]!))},${f(avg(a[1]!, b[1]!))}`);
   }
-  return `${d}Z`;
+  return `${parts.join("")}Z`;
+}
+
+/** The same path as {@link outlineToSvgPath} for a canvas, built directly at full precision. */
+export function outlinePath(outline: readonly number[][]): Path2D {
+  const path = new Path2D();
+  const len = outline.length;
+  if (len < 4) return path;
+  path.moveTo(outline[0]![0]!, outline[0]![1]!);
+  for (let i = 1; i < len - 1; i++) {
+    const a = outline[i]!;
+    const b = outline[i + 1]!;
+    path.quadraticCurveTo(a[0]!, a[1]!, (a[0]! + b[0]!) / 2, (a[1]! + b[1]!) / 2);
+  }
+  path.closePath();
+  return path;
 }
 
 /** True if the recorded pressures carry no information (mouse, or pen driver without pressure). */

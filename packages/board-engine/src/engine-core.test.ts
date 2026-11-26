@@ -186,6 +186,22 @@ describe("ink", () => {
     expect(d.endsWith("Z")).toBe(true);
   });
 
+  it("writes every curve's control point, so long strokes don't drift", () => {
+    const points: number[] = [];
+    for (let i = 0; i < 2000; i++) points.push(i * 1.37 + Math.sin(i / 7) * 9, Math.cos(i / 11) * 40, 0.5);
+    const outline = strokeOutline(points, "pen", 3, false, true);
+    const d = outlineToSvgPath(outline);
+    expect(d).not.toContain("T");
+    const curves = d.slice(1, -1).split("Q").slice(1);
+    expect(curves.length).toBe(outline.length - 2);
+    // Each control point is its outline vertex, to the 0.01 the path is written with.
+    curves.forEach((c, i) => {
+      const [cx, cy] = c.split(" ")[0]!.split(",").map(Number);
+      expect(Math.abs(cx! - outline[i + 1]![0]!)).toBeLessThanOrEqual(0.005 + 1e-9);
+      expect(Math.abs(cy! - outline[i + 1]![1]!)).toBeLessThanOrEqual(0.005 + 1e-9);
+    });
+  });
+
   it("decides when pressure must be simulated", () => {
     expect(needsSimulatedPressure("mouse", [0, 0, 0.5, 1, 1, 0.5])).toBe(true);
     expect(needsSimulatedPressure("pen", [0, 0, 0.3, 1, 1, 0.6])).toBe(false);

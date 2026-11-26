@@ -1,7 +1,7 @@
 import type { Camera } from "./camera";
 import { viewportBounds, worldToScreen } from "./camera";
 import { drawObject, drawShape, linePath, PathCache, strokeDashed } from "./draw";
-import { outlineToSvgPath, strokeOutline } from "./ink";
+import { LiveStrokeLayer } from "./liveLayer";
 import type { Matrix } from "./matrix";
 import { drawGuide, drawReadout, type Guide } from "./guides";
 import type { BoardObject, Bounds, InkTool, Page, ShapeObject, StrokeStyle } from "./model";
@@ -75,6 +75,7 @@ export class Renderer {
   private readonly sctx: CanvasRenderingContext2D;
   private readonly actx: CanvasRenderingContext2D;
   private readonly paths = new PathCache();
+  private readonly liveLayer = new LiveStrokeLayer();
   private width = 0;
   private height = 0;
   private dpr = 1;
@@ -154,12 +155,21 @@ export class Renderer {
         ctx.globalAlpha = live.style.opacity;
         strokeDashed(ctx, linePath(live.points), live.style.size, live.style.dash, inkColor(live.style.color, !!o.dark));
         ctx.globalAlpha = 1;
+      } else {
+        const highlighter = live.tool === "highlighter";
+        this.liveLayer.draw(
+          ctx,
+          {
+            ...live,
+            color: highlighter ? live.style.color : inkColor(live.style.color, !!o.dark),
+            alpha: highlighter ? highlighterOpacity(live.style.opacity, !!o.dark) : live.style.opacity,
+          },
+          cam,
+          this.dpr,
+        );
       }
-      const outline = live.style.dash && live.tool !== "highlighter" ? [] : strokeOutline(live.points, live.tool, live.style.size, live.simulatePressure, false);
-      ctx.globalAlpha = live.tool === "highlighter" ? highlighterOpacity(live.style.opacity, !!o.dark) : live.style.opacity;
-      ctx.fillStyle = live.tool === "highlighter" ? live.style.color : inkColor(live.style.color, !!o.dark);
-      ctx.fill(new Path2D(outlineToSvgPath(outline)));
-      ctx.globalAlpha = 1;
+    } else {
+      this.liveLayer.reset();
     }
     if (o.liveShape) {
       this.applyCamera(ctx, cam);

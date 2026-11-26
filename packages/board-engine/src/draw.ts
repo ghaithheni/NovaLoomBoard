@@ -1,5 +1,5 @@
 /** Canvas drawing for each object type (world coordinates; caller sets the camera transform). */
-import { outlineToSvgPath, strokeOutline } from "./ink";
+import { outlinePath, strokeOutline } from "./ink";
 import { assets } from "./assets";
 import type { BoardObject, ImageObject, LineDash, ShapeObject, StrokeObject, TextObject } from "./model";
 import { highlighterOpacity, inkColor } from "./paper";
@@ -22,7 +22,7 @@ export class PathCache {
     let path = this.paths.get(obj);
     if (!path) {
       const outline = strokeOutline(obj.points, obj.tool, obj.style.size, obj.simulatePressure, true);
-      path = new Path2D(outlineToSvgPath(outline));
+      path = outlinePath(outline);
       this.paths.set(obj, path);
     }
     return path;
