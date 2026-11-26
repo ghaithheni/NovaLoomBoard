@@ -10,8 +10,13 @@ permissions:
 
 jobs:
   check:
-    name: Typecheck and test
+    name: Typecheck and test (Node ${{ matrix.node }})
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest supported version (package.json "engines") and the current LTS.
+        node: ["22.13.0", "24"]
     env:
       # The tests don't start Electron, so skip downloading its binary.
       ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
@@ -20,7 +25,7 @@ jobs:
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: ${{ matrix.node }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck

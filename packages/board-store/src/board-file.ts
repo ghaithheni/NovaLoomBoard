@@ -113,6 +113,8 @@ export class BoardFile {
     private readonly hasAssets = true,
   ) {}
 
+  private closed = false;
+
   static create(path: string, init: { boardId: string; title: string; now?: number }): BoardFile {
     const db = new DatabaseSync(path, { enableForeignKeyConstraints: true });
     try {
@@ -275,7 +277,10 @@ export class BoardFile {
     try {
       let last = this.readMeta().lastAppliedSeq;
       const put = this.db.prepare(
-        "INSERT OR REPLACE INTO objects (id, page_id, z, type, data, points) VALUES (?, ?, ?, ?, ?, ?)",
+        // Shapes, text and images have no points: an empty blob. Node 22's node:sqlite
+        // binds an empty Uint8Array it returned itself (e.g. from readObjects) as NULL,
+        // so the empty blob is written by SQLite rather than taken from the argument.
+        "INSERT OR REPLACE INTO objects (id, page_id, z, type, data, points) VALUES (?, ?, ?, ?, ?, coalesce(?, x''))",
       );
       const del = this.db.prepare("DELETE FROM objects WHERE id = ?");
       const setZ = this.db.prepare("UPDATE objects SET z = ? WHERE id = ?");
@@ -296,6 +301,7 @@ export class BoardFile {
           switch (op.op) {
             case "put": {
               const o = op.object;
+              if (!ArrayBuffer.isView(o.points)) throw new Error(`object ${o.id} has no point data`);
               put.run(o.id, op.page, o.z, o.type, o.data, o.points);
               break;
             }
@@ -328,7 +334,7 @@ export class BoardFile {
       }
       this.db.exec("COMMIT");
     } catch (err) {
-      if (this.db.isTransaction) this.db.exec("ROLLBACK");
+      rollback(this.db);
       throw err;
     }
     return { applied, skipped };
@@ -384,7 +390,9 @@ export class BoardFile {
   }
 
   close(): void {
-    if (this.db.isOpen) this.db.close();
+    if (this.closed) return;
+    this.closed = true;
+    this.db.close();
   }
 
   private writeProps(props: BoardProps): void {
@@ -419,6 +427,19 @@ export class BoardFile {
   }
 }
 
+/**
+ * Ends a failed transaction. SQLite may already have rolled it back itself
+ * (on a full disk, for example), so "no transaction is active" is expected.
+ * Avoids `db.isTransaction`, which Node 22 only has from 22.16.
+ */
+function rollback(db: DatabaseSync): void {
+  try {
+    db.exec("ROLLBACK");
+  } catch {
+    // nothing to roll back
+  }
+}
+
 /** Version 1 → 2: page names and per-page views. The board-wide view becomes the first page's. */
 function migrateV1(db: DatabaseSync): void {
   db.exec("BEGIN IMMEDIATE");
@@ -432,7 +453,7 @@ function migrateV1(db: DatabaseSync): void {
     `);
     db.exec("COMMIT");
   } catch (err) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    rollback(db);
     throw err;
   }
 }
@@ -444,7 +465,7 @@ function migrateV2(db: DatabaseSync): void {
     db.exec(`${ASSETS_TABLE} PRAGMA user_version = 3;`);
     db.exec("COMMIT");
   } catch (err) {
-    if (db.isTransaction) db.exec("ROLLBACK");
+    rollback(db);
     throw err;
   }
 }

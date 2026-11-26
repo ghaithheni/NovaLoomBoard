@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { StrokeObject } from "@novaloom/board-engine";
-import { decodeObject, encodeObject, validateOps, ZOrderTracker, type PageRow, type StoreOp } from "@novaloom/board-engine/persist";
+import { decodeObject, encodeObject, validateOps, ZOrderTracker, type PageRow, type StoredObject, type StoreOp } from "@novaloom/board-engine/persist";
 import { applyOps, type Batch } from "../../board-engine/src/ops";
 import { createPage } from "../../board-engine/src/model";
 import { PageList } from "../../board-engine/src/pages";
@@ -125,6 +125,56 @@ describe("BoardFile", () => {
     expect(f.readObjects().map((o) => o.id)).toEqual(["s1"]);
     expect(f.readMeta().lastAppliedSeq).toBe(1);
     f.close();
+  });
+
+  it("rolls back a failed commit and keeps saving afterwards", () => {
+    const f = BoardFile.create(path.join(dir, "a.nlboard"), { boardId: "b1", title: "t" });
+    // The second op breaks the page foreign key: the whole entry must roll back.
+    expect(() => f.commit([{ seq: 1, ops: [put("s1", 0), put("s2", 1, 0, "missing-page")] }])).toThrow();
+    expect(f.readObjects()).toEqual([]);
+    expect(f.commit([{ seq: 1, ops: [put("s1", 0)] }])).toEqual({ applied: 1, skipped: 0 });
+    expect(f.readObjects().map((o) => o.id)).toEqual(["s1"]);
+    f.close();
+  });
+
+  it("releases the file when closed, and closing twice is harmless", () => {
+    const p = path.join(dir, "a.nlboard");
+    const f = BoardFile.create(p, { boardId: "b1", title: "t" });
+    f.commit([{ seq: 1, ops: [put("s1", 0)] }]);
+    f.close();
+    f.close();
+    // On Windows an open SQLite handle makes rename fail with EBUSY.
+    fs.renameSync(p, `${p}.moved`);
+    fs.rmSync(`${p}.moved`);
+  });
+
+  it("writes objects without points that were read back from a file (empty point data stays a blob)", () => {
+    const shape: StoredObject = encodeObject(
+      { id: "r", type: "shape", kind: "rect", x1: 0, y1: 0, x2: 10, y2: 10, rotation: 0, style: { color: "#112233", size: 2, opacity: 1, fill: "none" }, bounds: { minX: 0, minY: 0, maxX: 10, maxY: 10 } },
+      1,
+    );
+    const a = BoardFile.create(path.join(dir, "a.nlboard"), { boardId: "a", title: "t" });
+    a.commit([{ seq: 1, ops: [put("s1", 0), { op: "put", page: "p1", object: shape }] }]);
+    const read = a.readObjects();
+    a.close();
+    expect(read.find((o) => o.id === "r")!.points.byteLength).toBe(0);
+    // Write what was read into another file, as importing a board does.
+    const bPath = path.join(dir, "b.nlboard");
+    const b = BoardFile.create(bPath, { boardId: "b", title: "t" });
+    b.commit([{ seq: 1, ops: read.map(({ page, ...object }) => ({ op: "put" as const, page, object })) }]);
+    expect(b.verify()).toEqual([]);
+    b.close();
+    const raw = new DatabaseSync(bPath, { readOnly: true });
+    expect(raw.prepare("SELECT id, typeof(points) AS t, length(points) AS n FROM objects ORDER BY id").all()).toEqual([
+      { id: "r", t: "blob", n: 0 },
+      { id: "s1", t: "blob", n: 24 },
+    ]);
+    raw.close();
+    // Point data must still be supplied.
+    const c = BoardFile.create(path.join(dir, "c.nlboard"), { boardId: "c", title: "t" });
+    const broken = { ...shape, id: "x", points: null } as unknown as StoredObject;
+    expect(() => c.commit([{ seq: 1, ops: [{ op: "put", page: "p1", object: broken }] }])).toThrow(/no point data/);
+    c.close();
   });
 
   it("keeps each page's objects, background, view and name, and the page order", () => {
