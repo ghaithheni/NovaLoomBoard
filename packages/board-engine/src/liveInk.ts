@@ -113,8 +113,17 @@ export class LiveOutline {
   private startCap: Vec[] = [];
   private dot: Vec[] | null = null;
 
-  /** Brings the outline up to date. `points` may only grow between calls; anything else starts over. */
-  update(points: readonly number[], tool: InkTool, size: number, simulatePressure: boolean): void {
+  /** Predicted input points (x, y, p) drawn after the real ones; they only ever reach the tail. */
+  private extra: readonly number[] = [];
+
+  /**
+   * Brings the outline up to date. `points` may only grow between calls;
+   * anything else starts over. `predicted` points, if any, extend the tail
+   * for this call only: the settled outline never depends on them, and they
+   * are ignored while the stroke has fewer than three real points.
+   */
+  update(points: readonly number[], tool: InkTool, size: number, simulatePressure: boolean, predicted: readonly number[] = []): void {
+    this.extra = predicted;
     if (
       points !== this.points ||
       tool !== this.tool ||
@@ -226,12 +235,29 @@ export class LiveOutline {
       this.inputsDone = 1;
     }
     for (; this.inputsDone < n - 1; this.inputsDone++) {
-      const p = this.strokePoint(this.pointsState, this.inputsDone, false);
+      const i = this.inputsDone * 3;
+      const p = this.strokePoint(this.pointsState, pts[i]!, pts[i + 1]!, pts[i + 2], false);
       if (p) this.stroke.push(p);
     }
     const lastState = { ...this.pointsState };
-    const last = this.strokePoint(lastState, n - 1, true);
-    if (last) this.tailStroke.push(last);
+    const li = (n - 1) * 3;
+    const extra = this.extra;
+    // Where the real stroke ends, as if nothing were predicted: settling depends only on real input.
+    let realTotal: number;
+    if (extra.length < 3) {
+      const last = this.strokePoint(lastState, pts[li]!, pts[li + 1]!, pts[li + 2], true);
+      if (last) this.tailStroke.push(last);
+      realTotal = (last ?? this.stroke[this.stroke.length - 1]!).runningLength;
+    } else {
+      const probe = this.strokePoint({ ...this.pointsState }, pts[li]!, pts[li + 1]!, pts[li + 2], true);
+      realTotal = (probe ?? this.stroke[this.stroke.length - 1]!).runningLength;
+      const last = this.strokePoint(lastState, pts[li]!, pts[li + 1]!, pts[li + 2], false);
+      if (last) this.tailStroke.push(last);
+      for (let j = 0; j + 2 < extra.length; j += 3) {
+        const q = this.strokePoint(lastState, extra[j]!, extra[j + 1]!, extra[j + 2], j + 3 >= extra.length);
+        if (q) this.tailStroke.push(q);
+      }
+    }
 
     const all = this.tailStroke.length ? this.stroke.concat(this.tailStroke) : this.stroke;
     const count = all.length;
@@ -260,7 +286,7 @@ export class LiveOutline {
       }
       const settleBefore = this.stroke.length - 1; // point i needs point i+1 settled
       for (let i = this.leftCount.length; i < settleBefore; i++) {
-        if (total - all[i]!.runningLength < END_NOISE_THRESHOLD) break;
+        if (realTotal - all[i]!.runningLength < END_NOISE_THRESHOLD) break;
         this.outlinePoint(this.outlineState, all, i, count, vectorOf, this.left, this.right);
         this.leftCount.push(this.left.length);
         this.rightCount.push(this.right.length);
@@ -309,8 +335,6 @@ export class LiveOutline {
     const flat: number[] = [];
     for (const p of input) flat.push(p[0]!, p[1]!, p[2] ?? -1);
     // Run the general pass over the expanded input; -1 marks a missing pressure.
-    const saved = this.points;
-    this.points = flat;
     this.inputsDone = 0;
     const m = flat.length / 3;
     const first: StrokePoint = {
@@ -323,10 +347,9 @@ export class LiveOutline {
     const state: PointsState = { prev: first, runningLength: 0, reachedMinimumLength: false };
     const all: StrokePoint[] = [first];
     for (let i = 1; i < m; i++) {
-      const p = this.strokePoint(state, i, i === m - 1);
+      const p = this.strokePoint(state, flat[i * 3]!, flat[i * 3 + 1]!, flat[i * 3 + 2], i === m - 1);
       if (p) all.push(p);
     }
-    this.points = saved;
     this.stroke = [];
     this.pointsState = null;
     this.inputsDone = 0;
@@ -353,11 +376,7 @@ export class LiveOutline {
   }
 
   /** One input point of getStrokePoints; null when perfect-freehand would skip it. */
-  private strokePoint(s: PointsState, i: number, isLast: boolean): StrokePoint | null {
-    const pts = this.points!;
-    const x = pts[i * 3]!;
-    const y = pts[i * 3 + 1]!;
-    const pressure = pts[i * 3 + 2];
+  private strokePoint(s: PointsState, x: number, y: number, pressure: number | undefined, isLast: boolean): StrokePoint | null {
     const prev = s.prev.point;
     const point: Vec = [prev[0] + (x - prev[0]) * this.streamT, prev[1] + (y - prev[1]) * this.streamT];
     if (prev[0] === point[0] && prev[1] === point[1]) return null;

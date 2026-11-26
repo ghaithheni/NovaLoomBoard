@@ -17,6 +17,8 @@ export interface LiveStroke {
   style: StrokeStyle;
   points: number[];
   simulatePressure: boolean;
+  /** Where the pen is predicted to go (x, y, p), drawn for one frame; never part of the stroke. */
+  predicted?: readonly number[];
 }
 
 export interface Cursor {

@@ -5,6 +5,7 @@ All notable changes to NovaLoomBoard are documented here. The format follows [Ke
 ## [Unreleased]
 
 ### Improved
+- Ink keeps closer to the pen. While you draw, the stroke is extended up to 8 ms ahead along the pen's current direction, hiding part of the delay between the pen and the screen. The extension fades in at the start of a stroke and fades out when you turn sharply, slow down or stop. It is only ever drawn: saved and exported strokes contain exactly what you drew. Results are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#pen-prediction).
 - Long strokes stay fast while you draw. Previously, the stroke being drawn was rebuilt and filled in full on every frame, so it slowed down as it grew; at about 6,000 points, frames took up to 33 ms. Now only its last few points are redrawn, and the rest is kept in a cache. In testing on a 240 Hz display, frames kept to the display's 4.2 ms at any stroke length. The live outline is exactly the one perfect-freehand computes.
 - Saved strokes are drawn straight from their outline instead of an SVG path string, which skips formatting and parsing a string for every stroke.
 

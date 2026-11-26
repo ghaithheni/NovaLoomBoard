@@ -4,6 +4,7 @@ import { alignOffsets, badgeSpots, distributeOffsets, expandToGroups, lassoSelec
 import { assets } from "./assets";
 import { History, pickRedo, pickUndo } from "./history";
 import { needsSimulatedPressure } from "./ink";
+import { predictedInk, trimSamples, type InkSample } from "./predict";
 import {
   type Guide,
   type GuideKind,
@@ -219,6 +220,8 @@ type Gesture =
       shaped?: boolean;
       /** Last place the pointer moved to, for detecting a hold. */
       still?: { x: number; y: number };
+      /** Recent input with timestamps, for predicting where the pen is going (freehand ink only). */
+      samples?: InkSample[];
     }
   | { kind: "laser"; pointerId: number }
   | { kind: "guide"; pointerId: number; guide: GuideKind; mode: "move" | "rotate"; lastX: number; lastY: number }
@@ -306,6 +309,8 @@ export class BoardEngine {
   private frame = 0;
   private dirtyStatic = true;
   private dirtyActive = true;
+  /** The last active frame drew a predicted stretch of ink. */
+  private predicting = false;
   private destroyed = false;
   private insets = { top: 0, right: 0, bottom: 0, left: 0 };
   /** A touch or pen press that may become a long press (right-click). */
@@ -1153,6 +1158,11 @@ export class BoardEngine {
         this.renderer.renderActive(this.camera, this.overlay());
         this.dirtyActive = false;
       }
+      // A prediction fades out over a few frames when input stops.
+      if (this.predicting && this.gesture?.kind === "draw") {
+        this.dirtyActive = true;
+        this.schedule();
+      }
       // Laser trails fade out frame by frame.
       if (this.laserTrails.length && this.pruneLaser()) {
         this.dirtyActive = true;
@@ -1193,7 +1203,14 @@ export class BoardEngine {
       o.laser = { trails: this.laserTrails, now: performance.now(), dot: this.state.tool === "laser" ? this.hover : null };
     }
     if (g?.kind === "draw" && g.snap) o.readout = this.readout;
-    if (g?.kind === "draw") o.live = g.live;
+    this.predicting = false;
+    if (g?.kind === "draw") {
+      // Predicted points are drawn ahead of the pen for this frame only; they never join the stroke.
+      const pts = g.live.points;
+      const predicted = g.samples && !g.snap && !g.shaped ? predictedInk(g.samples, pts[pts.length - 1]!, this.camera.zoom, performance.now()) : [];
+      this.predicting = predicted.length > 0;
+      o.live = this.predicting ? { ...g.live, predicted } : g.live;
+    }
     if (g?.kind === "shape") o.liveShape = this.liveShape(g);
     if (g?.kind === "marquee") o.marquee = marqueeBox(g);
     if (g?.kind === "textbox") o.marquee = marqueeBox(g);
@@ -1610,6 +1627,7 @@ export class BoardEngine {
           simulatePressure: e.pointerType !== "pen",
         },
         still: p,
+        samples: [{ x: w.x, y: w.y, t: e.timeStamp }],
       };
       this.redraw();
     }
@@ -1739,9 +1757,11 @@ export class BoardEngine {
           const w = screenToWorld(this.camera, sp.x, sp.y);
           const lx = pts[pts.length - 3]!;
           const ly = pts[pts.length - 2]!;
+          if (g.samples) g.samples.push({ x: w.x, y: w.y, t: s.timeStamp });
           if (Math.hypot(w.x - lx, w.y - ly) < minDist) continue;
           pts.push(w.x, w.y, g.pointerType === "pen" ? s.pressure : 0.5);
         }
+        if (g.samples) trimSamples(g.samples);
         if (g.snap) {
           this.readout = this.guideReadout(g, p);
         } else {

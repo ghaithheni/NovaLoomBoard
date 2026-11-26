@@ -16,6 +16,8 @@ export interface LiveInkStyle {
   style: StrokeStyle;
   points: readonly number[];
   simulatePressure: boolean;
+  /** Predicted points drawn after the real ones, this frame only. */
+  predicted?: readonly number[];
   /** Fill colour and opacity, as the stroke will be drawn. */
   color: string;
   alpha: number;
@@ -48,7 +50,7 @@ export class LiveStrokeLayer {
   draw(ctx: CanvasRenderingContext2D, live: LiveInkStyle, cam: Camera, dpr: number): void {
     const { width, height } = ctx.canvas;
     const o = this.outline;
-    o.update(live.points, live.tool, live.style.size, live.simulatePressure);
+    o.update(live.points, live.tool, live.style.size, live.simulatePressure, live.predicted);
 
     const key = `${cam.x},${cam.y},${cam.zoom},${width},${height},${dpr},${live.color}`;
     if (live.points !== this.points || key !== this.key || o.settledCount < this.painted + 1) {

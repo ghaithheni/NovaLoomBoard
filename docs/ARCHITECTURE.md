@@ -85,6 +85,26 @@ The renderer is treated as untrusted. A board file, a pasted object or an import
 | **Snapshots before destructive actions** | Clearing a page or deleting one is recoverable from version history even after undo history is gone. |
 | **Pre-release file compatibility** | Files written by pre-release builds carry an older header ID. They still open, and get the current ID the next time they are saved. |
 
+## Pen prediction
+
+While you draw, the ink is extended a few milliseconds ahead of the pen to hide part of the input and display delay (`predict.ts`). The predicted points exist only for the frame being drawn: the stroke that is saved, exported and undone is always the real input.
+
+- **Our own predictor, not Chromium's.** Chromium's `getPredictedEvents()` uses a Kalman filter that extrapolates acceleration as well, which overshoots at turns and stops, and its settings come from field trials we can't test against. The delegated ink trail (`navigator.ink`) draws one width and colour per frame, so it can't follow pressure, perfect-freehand's shape or the highlighter.
+- **Cautious by design.** Constant velocity fitted over the last 32 ms, 8 ms ahead, at most 20 screen pixels. It fades in as a stroke starts, and fades out when the pen turns, brakes, or stops sending input. Predicting along an arc and a 12 ms horizon were tried; both strayed further from the path on noisy input or tight loops.
+
+Measured on simulated 240 Hz input with ±0.5 px jitter (`predictSim.ts`; the tests enforce these bounds). "Error" is the distance to where the pen is 8 ms later; "off path" is the furthest the predicted tip strays from where the pen actually goes.
+
+| Movement | Error without → with | Off path, max |
+| --- | --- | --- |
+| Straight line, 600 px/s | 4.8 → 0.8 px | 0.6 px |
+| Circle, 500 px/s | 4.0 → 1.0 px | 1.3 px |
+| Corner the pen slows into | 3.8 → 1.0 px | 0.6 px |
+| Fast handwriting loops (to 1,500 px/s) | 8.0 → 4.6 px | 3.6 px |
+| Instant 90° turn or reversal | 4.8 → 1.2 px | 4.7 px, for 2 samples |
+| Instant stop from 800 px/s | 3.3 → 0.8 px | 6.3 px, for 2 samples |
+
+An instant turn or stop can't be foreseen, so the tip passes it for at most two samples (8 ms), never further than the pen travels in 8 ms. Real pens slow into corners, which the predictor follows closely. In the app, drawing at 600 px/s, the ink reached 5 px further towards the pen, frame times were unchanged (4.2 ms at 240 Hz), and saved strokes matched the real input. This was measured with simulated pen input; it has not yet been tried on pen hardware.
+
 ## Testing
 
 Tests live next to the code (`*.test.ts`) and run with Vitest from the repository root (`pnpm test`). They cover the engine (editing, history, pages, export, recognition, plotting), the store (crash recovery, migrations, journal retry, snapshots), and keyboard handling. Property-based tests use fast-check.
