@@ -536,7 +536,7 @@ Licences and features change. If you spot an inaccuracy, please open an issue.
 
 ## Taking part
 
-- **Follow the work:** each release has a [milestone](https://github.com/ghaithheni/NovaLoomBoard/milestones) listing its issues.
+- **Follow the work:** the public [project board](https://github.com/users/ghaithheni/projects/1) shows what is up next, in progress and done. Each release also has a [milestone](https://github.com/ghaithheni/NovaLoomBoard/milestones) listing its issues.
 - **Pick up work:** issues labelled [`good first issue`](https://github.com/ghaithheni/NovaLoomBoard/labels/good%20first%20issue) are scoped for newcomers. Issues labelled [`help wanted`](https://github.com/ghaithheni/NovaLoomBoard/labels/help%20wanted) are ready for anyone.
 - **Discuss the roadmap:** open an issue with the Feature request template. Describe the problem before the solution, and say which category it belongs to: core, differentiator or long-term.
 - **Translate:** once the translation system lands (0.3), translations will be open to everyone.

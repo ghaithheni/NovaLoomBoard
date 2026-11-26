@@ -316,3 +316,11 @@ Final set (21 labels):
 | 22 | Check and fix colour contrast of the interface tokens (good first issue) | 0.3 |
 | 23 | Generate a keyboard shortcuts reference from the in-app list (good first issue) | 0.3 |
 | 24 | Script to generate large sample boards (good first issue) | 0.2 |
+
+### Project board
+
+The public project is [NovaLoomBoard roadmap](https://github.com/users/ghaithheni/projects/1). It is linked to the repository and contains all 24 issues.
+
+- **Status columns:** Up next, In progress, In review and Done.
+- **Views:** a default table, Board, By milestone (grouped by milestone), and Good first issues (filtered by that label).
+- ROADMAP.md and the README link to it.
